@@ -1,0 +1,60 @@
+---
+- hosts: all
+  become: True
+  roles:
+    - {role: gotansible.runit}
+
+  tasks:
+  - include: tasks/deps.yml
+  - name: Add epel-release repo
+    yum:
+      name: epel-release
+      state: present
+  
+  - name: NGINX - Inject certificate
+    copy: 
+        src=files/self-signed.crt 
+        dest=/etc/ssl/self-signed.crt
+        mode=0644
+
+  - name: NGINX - Inject key file
+    copy: 
+        src=files/self-signed.key 
+        dest=/etc/ssl/self-signed.key
+        mode=0644
+
+  - name: NGINX - Install service
+    yum:
+      name: nginx
+      state: present
+
+  - name: NGINX - Setup configuration
+    template:
+        src=config/nginx.conf
+        dest=/etc/nginx/nginx.conf
+        mode=0644
+    notify: restart nginx
+
+  - name: NGINX - Start service
+    service:
+      name: nginx
+      state: started
+
+  - name: RUNIT - Copy zip file into machine
+    unarchive:
+      src: application.zip
+      dest: /opt/
+      mode: 0755
+
+  - name: RUNIT - Create log directory
+    file: state=directory path=/var/log/appserver
+
+  - name: RUNIT - Create service
+    runit: name=appserver enabled=true state=up timeout=9 user='root' command='bash /opt/application/run'
+    register: appserver_status
+
+  handlers:
+    - name: restart nginx
+      service:
+        name=nginx
+        state=restarted
